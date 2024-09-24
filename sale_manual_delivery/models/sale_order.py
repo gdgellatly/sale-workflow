@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import ValidationError
 
 
 class SaleOrder(models.Model):
@@ -32,19 +32,19 @@ class SaleOrder(models.Model):
         for sale in self:
             sale.has_pending_delivery = bool(sale.order_line.pending_delivery())
 
+    @api.constrains("manual_delivery")
+    def _check_manual_delivery(self):
+        if self.filtered_domain(["state", "not in", ["draft", "sent"]]):
+            raise ValidationError(
+                _(
+                    "You can only change to/from manual delivery"
+                    " in a quote, not a confirmed order"
+                )
+            )
+
     def action_manual_delivery_wizard(self):
         self.ensure_one()
         action = self.env.ref("sale_manual_delivery.action_wizard_manual_delivery")
         [action] = action.read()
         action["context"] = {"default_carrier_id": self.carrier_id.id}
         return action
-
-    @api.constrains("manual_delivery")
-    def _check_manual_delivery(self):
-        if any(rec.state not in ["draft", "sent"] for rec in self):
-            raise UserError(
-                _(
-                    "You can only change to/from manual delivery"
-                    " in a quote, not a confirmed order"
-                )
-            )
