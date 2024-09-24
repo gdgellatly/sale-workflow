@@ -52,5 +52,4 @@ class SaleOrder(models.Model):
             raise UserError(_("This order cannot be manually delivered"))
         action = self.env.ref("sale_manual_delivery.action_wizard_manual_delivery")
         [action] = action.read()
-        action["context"] = {"default_carrier_id": self.carrier_id.id}
         return action

@@ -49,111 +49,73 @@ class SaleOrderLine(models.Model):
             line.qty_to_procure = line.product_uom_qty - line.qty_procured
 
     def _get_procurement_group(self):
-        # Overload to get the procurement.group for the right date / partner
-        # Note: sale_manual_delivery is expected to be a manual.delivery record
-        manual_delivery = self.env.context.get("sale_manual_delivery")
-        if manual_delivery:
+        """Overload to get the procurement.group for the right date / partner"""
+        if partner_id := self.env.context.get("manual_partner_id"):
             domain = [
                 ("sale_id", "=", self.order_id.id),
-                ("partner_id", "=", manual_delivery.partner_id.id),
+                ("partner_id", "=", partner_id),
             ]
-            if manual_delivery.date_planned:
+            if date_planned := self.env.context.get("manual_date_planned"):
                 domain += [
-                    ("date_planned", "=", manual_delivery.date_planned),
+                    ("date_planned", "=", date_planned),
                 ]
             return self.env["procurement.group"].search(domain, limit=1)
         else:
             return super()._get_procurement_group()
 
     def _prepare_procurement_group_vals(self):
-        # Overload to add manual.delivery fields to procurement.group
-        # Note: sale_manual_delivery is expected to be a manual.delivery record
+        """Overload to add manual.delivery fields to procurement.group"""
         res = super()._prepare_procurement_group_vals()
-        manual_delivery = self.env.context.get("sale_manual_delivery")
-        if manual_delivery:
-            res["partner_id"] = manual_delivery.partner_id.id
-            res["date_planned"] = manual_delivery.date_planned
+        if partner_id := self.env.context.get("manual_partner_id"):
+            res["partner_id"] = partner_id
+        if date_planned := self.env.context.get("manual_date_planned"):
+            res["date_planned"] = date_planned
         return res
 
     def _prepare_procurement_values(self, group_id=False):
-        # Overload to handle manual delivery date planned and route
-        # This method ultimately prepares stock.move vals as its result is sent
-        # to StockRule._get_stock_move_values.
-        # Note: sale_manual_delivery is expected to be a manual.delivery record
+        """Overload to handle manual delivery date planned and route
+        This method ultimately prepares stock.move vals as its result is sent
+        to StockRule._get_stock_move_values.
+        """
         res = super()._prepare_procurement_values(group_id=group_id)
-        manual_delivery = self.env.context.get("sale_manual_delivery")
-        if manual_delivery:
-            if manual_delivery.date_planned:
-                res["date_planned"] = manual_delivery.date_planned
-            if manual_delivery.route_id:
-                # `_get_stock_move_values` expects a recordset
-                res["route_ids"] = manual_delivery.route_id
+        if date_planned := self.env.context.get("manual_date_planned"):
+            res["date_planned"] = date_planned
+        if route_id := self.env.context.get("manual_route_id"):
+            res["route_ids"] = route_id
         return res
 
     def pending_delivery(self):
         """Return sales order lines with quantities still required to procure"""
         return self.filtered(
-            lambda x: x.product_id.type in ['consu', 'product']
-                and x.qty_to_procure > 0
-                and (
-                    not x.move_ids
-                    or all(state in ("cancel",) for state in x.move_ids.mapped("state"))
-                ))
+            lambda x: x.product_id.type in ["consu", "product"]
+            and x.qty_to_procure > 0
+            and (
+                not x.move_ids
+                or all(state in ("cancel",) for state in x.move_ids.mapped("state"))
+            )
+        )
 
-    def _action_launch_stock_rule_manual(self, previous_product_uom_qty=False):
-        # Note: sale_manual_delivery is expected to be a manual.delivery record
-        manual_delivery = self.env.context.get("sale_manual_delivery")
-        procurements = []
-        for line in self:
-            if line.state != "sale" or line.product_id.type not in ("consu", "product"):
-                continue
-            # Qty comes from the manual delivery wizard
-            # This is different than the original method
-            manual_line = manual_delivery.line_ids.filtered(
-                lambda l: l.order_line_id == line
+    def _get_qty_procurement(self, previous_product_uom_qty=False):
+        """When procurement is called from the Create Delivery button on a manual
+        delivery, return the quantity specified there"""
+        self.ensure_one()
+        if manual_qty_to_procure := self.env.context.get("manual_qty_to_procure"):
+            qty = manual_qty_to_procure.get(self.id, self.product_uom_qty)
+        else:
+            qty = super()._get_qty_procurement(
+                previous_product_uom_qty=previous_product_uom_qty
             )
-            if not manual_line.quantity:
-                continue
-            group_id = line._get_procurement_group()
-            if not group_id:
-                group_id = self.env["procurement.group"].create(
-                    line._prepare_procurement_group_vals()
-                )
-            else:
-                # In case the procurement group is already created and the order was
-                # cancelled, we need to update certain values of the group.
-                # This part is different than the original method
-                if group_id.move_type != line.order_id.picking_policy:
-                    group_id.write({"move_type": line.order_id.picking_policy})
-            values = line._prepare_procurement_values(group_id=group_id)
-            line_uom = line.product_uom
-            quant_uom = line.product_id.uom_id
-            product_qty, procurement_uom = line_uom._adjust_uom_quantities(
-                manual_line.quantity, quant_uom
-            )
-            procurements.append(
-                self.env["procurement.group"].Procurement(
-                    line.product_id,
-                    product_qty,
-                    procurement_uom,
-                    line.order_id.partner_shipping_id.property_stock_customer,
-                    line.name,
-                    line.order_id.name,
-                    line.order_id.company_id,
-                    values,
-                )
-            )
-        if procurements:
-            self.env["procurement.group"].run(procurements)
-        return True
+        return qty
 
     def _action_launch_stock_rule(self, previous_product_uom_qty=False):
-        # Overload to skip launching stock rules on manual delivery lines
-        # We only launch them when this is called from the manual delivery wizard
-        # Note: sale_manual_delivery is expected to be a manual.delivery record
-        manual_delivery_lines = self.filtered("order_id.manual_delivery")
-        lines_to_launch = self - manual_delivery_lines
+        """Overload to skip launching stock rules on manual delivery lines
+        We only launch them when this is called from the manual delivery wizard
+        """
+        if "manual_qty_to_procure" in self.env.context:
+            lines_to_launch = self
+        else:
+            manual_delivery_lines = self.filtered("order_id.manual_delivery")
+            lines_to_launch = self - manual_delivery_lines
         return super(SaleOrderLine, lines_to_launch)._action_launch_stock_rule(
             previous_product_uom_qty=previous_product_uom_qty
         )
-

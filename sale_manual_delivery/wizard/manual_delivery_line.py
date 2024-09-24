@@ -54,3 +54,16 @@ class ManualDeliveryLine(models.TransientModel):
                     "If you need to do so, please edit the sale order first."
                 )
             )
+
+    def _get_procurement_quantities(self):
+        """Due to the mix of imperative style and business logic of
+        _action_launch_stock_rule the qty to procure is calculated inside
+        the function. Therefore we need the procurement quantities to be
+        the order lines product_uom_qty - qty_to_procure = procurement_qty.
+        Then within _action_launch_stock_rule it will reverse this logic.
+        """
+        return {
+            mdl.order_line_id.id: mdl.order_line_id.product_uom_qty - mdl.quantity
+            for mdl in self
+            if mdl.quantity
+        }
