@@ -4,7 +4,7 @@
         <field name="name">manual.delivery.wizard.form</field>
         <field name="model">manual.delivery</field>
         <field name='arch' type='xml'>
-            <form string="Create Manually Delivery" name="manual_procurment_form">
+            <form string="Create Manually Delivery" name="manual_procurement_form">
                 <sheet>
                     <group>
                         <group>

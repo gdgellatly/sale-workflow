@@ -4,7 +4,6 @@
 
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
-from odoo.tools import float_compare
 
 
 class ManualDeliveryLine(models.TransientModel):
@@ -32,15 +31,21 @@ class ManualDeliveryLine(models.TransientModel):
         related="order_line_id.product_uom_qty",
         help="Quantity ordered in the related Sale Order",
         readonly=True,
+        digits="Product Unit of Measure",
     )
-    qty_procured = fields.Float(related="order_line_id.qty_procured")
-    quantity = fields.Float()
+    qty_procured = fields.Float(
+        related="order_line_id.qty_procured",
+        digits="Product Unit of Measure",
+    )
+    quantity = fields.Float(
+        digits="Product Unit of Measure",
+    )
 
     @api.constrains("quantity")
     def _check_quantity(self):
         """Prevent delivering more than the ordered quantity"""
         if any(
-            float_compare(
+            fields.Float.compare(
                 line.quantity,
                 line.qty_ordered - line.qty_procured,
                 precision_rounding=line.product_id.uom_id.rounding,
@@ -54,6 +59,8 @@ class ManualDeliveryLine(models.TransientModel):
                     "If you need to do so, please edit the sale order first."
                 )
             )
+        if any(q < 0.0 for q in self.mapped("quantity")):
+            raise ValidationError(_("You can not deliver a negative amount."))
 
     def _get_procurement_quantities(self):
         """Due to the mix of imperative style and business logic of

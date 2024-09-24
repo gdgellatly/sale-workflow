@@ -14,6 +14,7 @@ class SaleOrderLine(models.Model):
         compute="_compute_qty_procured",
         readonly=True,
         store=True,
+        digits="Product Unit of Measure",
     )
     qty_to_procure = fields.Float(
         string="Quantity to Procure",
@@ -21,9 +22,11 @@ class SaleOrderLine(models.Model):
         compute="_compute_qty_to_procure",
         store=True,
         readonly=True,
+        digits="Product Unit of Measure",
     )
 
     @api.depends(
+        "qty_delivered_method",
         "move_ids.state",
         "move_ids.scrapped",
         "move_ids.product_uom_qty",
@@ -87,12 +90,7 @@ class SaleOrderLine(models.Model):
     def pending_delivery(self):
         """Return sales order lines with quantities still required to procure"""
         return self.filtered(
-            lambda x: x.product_id.type in ["consu", "product"]
-            and x.qty_to_procure > 0
-            and (
-                not x.move_ids
-                or all(state in ("cancel",) for state in x.move_ids.mapped("state"))
-            )
+            lambda x: x.product_id.type in ["consu", "product"] and x.qty_to_procure > 0
         )
 
     def _get_qty_procurement(self, previous_product_uom_qty=False):
