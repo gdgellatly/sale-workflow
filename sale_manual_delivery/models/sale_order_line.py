@@ -90,6 +90,16 @@ class SaleOrderLine(models.Model):
                 res["route_ids"] = manual_delivery.route_id
         return res
 
+    def pending_delivery(self):
+        """Return sales order lines with quantities still required to procure"""
+        return self.filtered(
+            lambda x: x.product_id.type in ['consu', 'product']
+                and x.qty_to_procure > 0
+                and (
+                    not x.move_ids
+                    or all(state in ("cancel",) for state in x.move_ids.mapped("state"))
+                ))
+
     def _action_launch_stock_rule_manual(self, previous_product_uom_qty=False):
         # Note: sale_manual_delivery is expected to be a manual.delivery record
         manual_delivery = self.env.context.get("sale_manual_delivery")
@@ -146,3 +156,4 @@ class SaleOrderLine(models.Model):
         return super(SaleOrderLine, lines_to_launch)._action_launch_stock_rule(
             previous_product_uom_qty=previous_product_uom_qty
         )
+

@@ -23,15 +23,7 @@ class SaleOrder(models.Model):
 
     def _compute_delivery_pending(self):
         for rec in self:
-            lines_pending = rec.order_line.filtered(
-                lambda x: x.product_id.type != "service"
-                and x.qty_to_procure > 0
-                and (
-                    not x.move_ids
-                    or all(state in ("cancel",) for state in x.move_ids.mapped("state"))
-                )
-            )
-            rec.has_pending_delivery = bool(lines_pending)
+            rec.has_pending_delivery = bool(rec.order_line.pending_delivery())
 
     @api.onchange("team_id")
     def _onchange_team_id(self):
