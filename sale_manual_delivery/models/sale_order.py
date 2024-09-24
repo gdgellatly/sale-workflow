@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 
 class SaleOrder(models.Model):
@@ -18,9 +18,9 @@ class SaleOrder(models.Model):
         "and ship the goods.",
     )
 
-    has_pending_delivery = fields.Boolean(
-        string="Delivery pending?",
-        compute="_compute_delivery_pending",
+    can_create_manual_delivery = fields.Boolean(
+        string="Show Create Delivery Button",
+        compute="_compute_can_create_manual_delivery",
     )
 
     @api.depends("team_id")
@@ -28,9 +28,13 @@ class SaleOrder(models.Model):
         for sale in self:
             sale.manual_delivery = sale.team_id.manual_delivery
 
-    def _compute_delivery_pending(self):
-        for sale in self:
-            sale.has_pending_delivery = bool(sale.order_line.pending_delivery())
+    def _compute_can_create_manual_delivery(self):
+        not_manual_sales = self.filtered(
+            lambda s: not s.manual_delivery or s.state not in ("sale", "done")
+        )
+        not_manual_sales.show_create_delivery_button = False
+        for sale in self - not_manual_sales:
+            sale.can_create_manual_delivery = bool(sale.order_line.pending_delivery())
 
     @api.constrains("manual_delivery")
     def _check_manual_delivery(self):
@@ -44,6 +48,8 @@ class SaleOrder(models.Model):
 
     def action_manual_delivery_wizard(self):
         self.ensure_one()
+        if not self.can_create_manual_delivery:
+            raise UserError(_("This order cannot be manually delivered"))
         action = self.env.ref("sale_manual_delivery.action_wizard_manual_delivery")
         [action] = action.read()
         action["context"] = {"default_carrier_id": self.carrier_id.id}
