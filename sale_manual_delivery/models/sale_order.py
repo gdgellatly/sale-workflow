@@ -10,7 +10,9 @@ class SaleOrder(models.Model):
     _inherit = "sale.order"
 
     manual_delivery = fields.Boolean(
-        default=False,
+        compute="_compute_team_id",
+        store=True,
+        readonly=False,
         help="If enabled, the deliveries are not created at SO confirmation. "
         "You need to use the Create Delivery button in order to reserve "
         "and ship the goods.",
@@ -21,13 +23,14 @@ class SaleOrder(models.Model):
         compute="_compute_delivery_pending",
     )
 
-    def _compute_delivery_pending(self):
-        for rec in self:
-            rec.has_pending_delivery = bool(rec.order_line.pending_delivery())
+    @api.depends("team_id")
+    def _compute_team_id(self):
+        for sale in self:
+            sale.manual_delivery = sale.team_id.manual_delivery
 
-    @api.onchange("team_id")
-    def _onchange_team_id(self):
-        self.manual_delivery = self.team_id.manual_delivery
+    def _compute_delivery_pending(self):
+        for sale in self:
+            sale.has_pending_delivery = bool(sale.order_line.pending_delivery())
 
     def action_manual_delivery_wizard(self):
         self.ensure_one()
