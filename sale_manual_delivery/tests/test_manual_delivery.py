@@ -77,13 +77,8 @@ class TestSaleStock(TestSaleCommonBase):
             'Picking should be created after "manual delivery" wizard call',
         )
         # create a manual delivery, nothing left to ship
-        wizard = self._manual_delivery_wizard(order)
-        self.assertFalse(
-            wizard.line_ids,
-            "After picking creation for all products, "
-            "no lines should be left in the wizard",
-        )
-        wizard.confirm()
+        with self.assertRaises(UserError):
+            self._manual_delivery_wizard(order)
         self.assertEqual(
             len(order.picking_ids), 1.0, "Picking number should remain 1.0"
         )
@@ -297,11 +292,12 @@ class TestSaleStock(TestSaleCommonBase):
             order2.picking_ids,
             'Picking should not be created after "manual delivery" wizard call',
         )
+
         # test action undelivered
         undelivered = self.env["sale.order.line"].search(
             [
                 ("qty_to_procure", ">", 0),
-                ("state", "=", "sale"),
+                ("state", "in", ("sale", "done")),
                 ("id", "in", all_lines.ids),
             ]
         )

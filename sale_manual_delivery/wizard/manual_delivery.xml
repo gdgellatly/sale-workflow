@@ -13,6 +13,7 @@
                                 invisible="1"
                                 force_save="1"
                             />
+                            <field name="company_id" invisible="1" force_save="1" />
                             <field name="partner_id" />
                             <field name="date_planned" />
                         </group>

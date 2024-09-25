@@ -10,9 +10,10 @@ class SaleOrder(models.Model):
     _inherit = "sale.order"
 
     manual_delivery = fields.Boolean(
-        compute="_compute_team_id",
+        compute="_compute_manual_delivery",
         store=True,
         readonly=False,
+        precompute=True,
         help="If enabled, the deliveries are not created at SO confirmation. "
         "You need to use the Create Delivery button in order to reserve "
         "and ship the goods.",
@@ -24,7 +25,7 @@ class SaleOrder(models.Model):
     )
 
     @api.depends("team_id")
-    def _compute_team_id(self):
+    def _compute_manual_delivery(self):
         for sale in self:
             sale.manual_delivery = sale.team_id.manual_delivery
 
@@ -32,13 +33,13 @@ class SaleOrder(models.Model):
         not_manual_sales = self.filtered(
             lambda s: not s.manual_delivery or s.state not in ("sale", "done")
         )
-        not_manual_sales.show_create_delivery_button = False
+        not_manual_sales.can_create_manual_delivery = False
         for sale in self - not_manual_sales:
             sale.can_create_manual_delivery = bool(sale.order_line.pending_delivery())
 
     @api.constrains("manual_delivery")
     def _check_manual_delivery(self):
-        if self.filtered_domain(["state", "not in", ["draft", "sent"]]):
+        if self.filtered_domain([("state", "not in", ["draft", "sent"])]):
             raise ValidationError(
                 _(
                     "You can only change to/from manual delivery"
@@ -50,6 +51,6 @@ class SaleOrder(models.Model):
         self.ensure_one()
         if not self.can_create_manual_delivery:
             raise UserError(_("This order cannot be manually delivered"))
-        action = self.env.ref("sale_manual_delivery.action_wizard_manual_delivery")
-        [action] = action.read()
-        return action
+        return self.env["ir.actions.act_window"]._for_xml_id(
+            "sale_manual_delivery.action_wizard_manual_delivery"
+        )

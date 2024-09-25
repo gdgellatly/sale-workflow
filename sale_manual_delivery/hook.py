@@ -1,6 +1,11 @@
 def pre_init_hook(cr):
     cr.execute(
         """
+        ALTER TABLE sale_order ADD COLUMN IF NOT EXISTS manual_delivery boolean DEFAULT FALSE
+        """
+    )
+    cr.execute(
+        """
         ALTER TABLE sale_order_line ADD COLUMN IF NOT EXISTS qty_procured numeric;
         COMMENT ON COLUMN sale_order_line.qty_procured IS 'Quantity Procured';
         """
